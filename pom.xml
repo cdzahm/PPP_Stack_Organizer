@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.scijava</groupId>
+        <artifactId>pom-scijava</artifactId>
+        <version>42.0.0</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>provenzano_lab</groupId>
+    <artifactId>PPP_Motility_Analysis</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <name>PPP Motility Analysis</name>
+    <description>Fiji/ImageJ plugin suite for T cell motility analysis — Provenzano Lab, University of Minnesota</description>
+    <url>https://github.com/cdzahm/Fiji-ImageJ_Plugins</url>
+    <inceptionYear>2026</inceptionYear>
+
+    <organization>
+        <name>Provenzano Lab, University of Minnesota</name>
+        <url>https://github.com/cdzahm</url>
+    </organization>
+
+    <licenses>
+        <license>
+            <name>BSD-2-Clause</name>
+            <url>https://opensource.org/licenses/BSD-2-Clause</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>cdzahm</id>
+            <name>cdzahm</name>
+            <email>cdzahm@gmail.com</email>
+            <organization>Provenzano Lab, University of Minnesota</organization>
+            <roles>
+                <role>developer</role>
+            </roles>
+        </developer>
+    </developers>
+
+    <contributors>
+    </contributors>
+
+    <mailingLists>
+    </mailingLists>
+
+    <scm>
+        <connection>scm:git:git://github.com/cdzahm/Fiji-ImageJ_Plugins</connection>
+        <developerConnection>scm:git:git@github.com:cdzahm/Fiji-ImageJ_Plugins</developerConnection>
+        <url>https://github.com/cdzahm/Fiji-ImageJ_Plugins</url>
+    </scm>
+
+    <issueManagement>
+        <system>GitHub Issues</system>
+        <url>https://github.com/cdzahm/Fiji-ImageJ_Plugins/issues</url>
+    </issueManagement>
+
+    <ciManagement>
+        <system>None</system>
+    </ciManagement>
+
+    <properties>
+        <license.licenseName>bsd_2</license.licenseName>
+        <license.copyrightOwners>Provenzano Lab, University of Minnesota</license.copyrightOwners>
+        <enforcer.skip>true</enforcer.skip>
+    </properties>
+
+    <repositories>
+        <repository>
+            <id>scijava.public</id>
+            <url>https://maven.scijava.org/content/groups/public</url>
+        </repository>
+    </repositories>
+
+    <dependencies>
+        <dependency>
+            <groupId>net.imagej</groupId>
+            <artifactId>ij</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ome</groupId>
+            <artifactId>bio-formats_plugins</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ome</groupId>
+            <artifactId>formats-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ome</groupId>
+            <artifactId>formats-gpl</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.scijava</groupId>
+                <artifactId>scijava-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>populate-app</id>
+                        <goals>
+                            <goal>populate-app</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
