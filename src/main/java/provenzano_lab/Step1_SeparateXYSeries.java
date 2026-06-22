@@ -35,6 +35,9 @@ public class Step1_SeparateXYSeries implements PlugIn {
         String baseDir;
 
         if (!isBatch) {
+            IJ.showMessage("Step 1 — Select File",
+                "In the next dialog, navigate to your acquisition folder\n" +
+                "and select the .companion.ome file.");
             OpenDialog od = new OpenDialog("Select .companion.ome file", null);
             if (od.getPath() == null) return;
             String path = od.getPath();
@@ -45,6 +48,12 @@ public class Step1_SeparateXYSeries implements PlugIn {
             filePaths.add(path);
             baseDir = od.getDirectory();
         } else {
+            IJ.showMessage("Step 1 — Select Folder",
+                "In the next dialog, select the folder containing your .companion.ome files.\n\n" +
+                "Note: if there are incomplete imaging runs or single images in the same\n" +
+                "folder, the log will show errors for those files but will continue processing\n" +
+                "the complete datasets correctly. To avoid errors, delete any incomplete\n" +
+                "time series or single images before running.");
             DirectoryChooser dc = new DirectoryChooser("Select folder containing .companion.ome files");
             baseDir = dc.getDirectory();
             if (baseDir == null) return;
@@ -127,7 +136,7 @@ public class Step1_SeparateXYSeries implements PlugIn {
             } catch (Exception e) {
                 String reason = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                 failures.add(filePath + "  →  " + reason);
-                LogUtils.log("FAILED: " + filePath + " — " + reason);
+                LogUtils.log("FAILED: " + new File(filePath).getName() + " — " + reason);
             }
         }
 
@@ -145,7 +154,7 @@ public class Step1_SeparateXYSeries implements PlugIn {
     private void processFile(String filePath, int nXY, int nC, int nZ,
                               double frameInterval, double pixelWidth, double pixelHeight,
                               double voxelDepth, boolean isBatch) throws Exception {
-        LogUtils.log("Opening: " + filePath);
+        LogUtils.log("Opening: " + new File(filePath).getName());
         ImagePlus[] imps = BioFormatsUtils.openWithBioFormats(filePath);
         if (imps == null || imps.length == 0 || imps[0] == null) {
             throw new Exception("Bio-Formats returned no images.");
@@ -163,7 +172,7 @@ public class Step1_SeparateXYSeries implements PlugIn {
             // Passthrough: just apply calibration and save
             CalibrationUtils.applyCalibration(source, pixelWidth, pixelHeight, voxelDepth, frameInterval);
             String outPath = outputDir + File.separator + basename + "_XY01.ome.tif";
-            LogUtils.log("Saving: " + outPath);
+            LogUtils.log("Saving: " + new File(outPath).getName());
             BioFormatsUtils.saveAsOMETIFF(source, outPath);
             if (!isBatch) {
                 source.show();
@@ -203,7 +212,7 @@ public class Step1_SeparateXYSeries implements PlugIn {
             CalibrationUtils.applyCalibration(outImp, pixelWidth, pixelHeight, voxelDepth, frameInterval);
 
             String outPath = outputDir + File.separator + label;
-            LogUtils.log("Saving: " + outPath);
+            LogUtils.log("Saving: " + new File(outPath).getName());
             BioFormatsUtils.saveAsOMETIFF(outImp, outPath);
 
             if (!isBatch) {
