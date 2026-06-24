@@ -1,7 +1,7 @@
 # PPP_Motility_Analysis — Project Design Document
 
 **Provenzano Lab | University of Minnesota**
-Version 0.3 — June 2026 | *DRAFT — Details subject to change*
+Version 0.3.1 — June 2026 | *DRAFT — Details subject to change*
 
 **Local project path:** `/Users/cdz/PPP Lab Files/Coding Projects/Cell Tracking/PPP_Motility_Analysis`
 
@@ -17,17 +17,17 @@ The primary scientific use case is quantifying T cell motility coefficients and 
 
 ## 2. Pipeline Status Overview
 
-> ⚠ This document is a living design record. Steps 2–5 are planned but details are still being worked out. This document will be updated as each step is developed.
+> ⚠ This document is a living design record. Steps 2–4 are planned but details are still being worked out. This document will be updated as each step is developed.
 
 | Pipeline Step | Status | Notes |
 |---|---|---|
-| Step 1: XY Series Separation + Channel Split | **In Development** | Steps 1 and 2 merged into one plugin |
+| Step 1: Separate XY and C | **In Development** | XY de-interleaving + channel split in one plugin |
 | Step 2: Channel Processing | Planned | Manual intervention required |
 | Step 3: Motility Analysis | Planned | Core scientific output |
 | Step 4: Z Projection + AVI Export | Planned | Presentation output |
 | Master Pipeline Runner | Planned | Calls all steps sequentially |
 
-> ℹ **Why Steps 1 and 2 are merged:** XY de-interleaving and channel splitting are both pure structural reorganizations of the same source data. Merging them eliminates an intermediate multi-channel per-position file that nothing in the pipeline directly consumes, halves disk usage, and simplifies the output folder structure. The single-channel per-role files produced by this merged step are what all downstream steps actually need.
+> ℹ **Why XY separation and channel splitting are combined:** Both are pure structural reorganizations of the same source data. Combining them eliminates an intermediate multi-channel per-position file that nothing in the pipeline directly consumes, halves disk usage, and simplifies the output folder structure. The single-channel per-role files produced by this step are what all downstream steps actually need.
 
 ---
 
@@ -83,7 +83,7 @@ When Bio-Formats concatenates multiple XY position series with *Concatenate seri
 Frame 1 → XY1, T=1  |  Frame 2 → XY2, T=1  |  Frame 3 → XY1, T=2  |  Frame 4 → XY2, T=2  |  ...
 ```
 
-This pattern extends to any nXY. **When nXY=1, no de-interleaving is performed** — the plugin acts as a standardized importer and calibration corrector, keeping the rest of the pipeline consistent regardless of acquisition setup.
+This pattern extends to any nXY. **When nXY=1, no de-interleaving is performed** — the plugin acts as a standardized importer, calibration corrector, and channel splitter.
 
 ---
 
@@ -126,7 +126,7 @@ All plugins reside in the Java package: `provenzano_lab`
 
 ```
 PPP_Motility_Analysis/
-├── pom.xml                                    ← Maven build file
+├── pom.xml                                       ← Maven build file
 ├── README.md
 ├── DESIGN.md
 └── src/
@@ -134,16 +134,16 @@ PPP_Motility_Analysis/
         ├── java/
         │   └── provenzano_lab/
         │       ├── utils/
-        │       │   ├── BioFormatsUtils.java   ← shared Bio-Formats I/O helpers
-        │       │   ├── CalibrationUtils.java  ← spatial/temporal calibration helpers
-        │       │   └── LogUtils.java          ← shared logging utilities
-        │       ├── Step1_SeparateAndSplit.java ← XY separation + channel split (merged)
-        │       ├── Step2_ProcessChannels.java  (planned)
-        │       ├── Step3_MotilityAnalysis.java (planned)
-        │       ├── Step4_ProjectAndExport.java (planned)
-        │       └── PPP_Pipeline_Runner.java    (planned)
+        │       │   ├── BioFormatsUtils.java      ← shared Bio-Formats I/O helpers
+        │       │   ├── CalibrationUtils.java     ← spatial/temporal calibration helpers
+        │       │   └── LogUtils.java             ← shared logging utilities
+        │       ├── Step1_SeparateXYandC.java     ← XY de-interleave + channel split
+        │       ├── Step2_ProcessChannels.java    (planned)
+        │       ├── Step3_MotilityAnalysis.java   (planned)
+        │       ├── Step4_ProjectAndExport.java   (planned)
+        │       └── PPP_Pipeline_Runner.java      (planned)
         └── resources/
-            └── plugins.config                 ← Fiji menu registration
+            └── plugins.config                    ← Fiji menu registration
 ```
 
 ### 4.5 Distribution
@@ -152,7 +152,7 @@ Lab members install by dropping the compiled `.jar` into their Fiji `plugins/` f
 
 ---
 
-## 5. Step 1 — XY Series Separation + Channel Split (`Step1_SeparateAndSplit`)
+## 5. Step 1 — Separate XY and C (`Step1_SeparateXYandC`)
 
 ### 5.1 Purpose
 
@@ -165,7 +165,7 @@ Opens a Bruker `.companion.ome` file, de-interleaves XY positions, splits channe
 Rather than rebuilding OME metadata from scratch, Step 1 copies the full source metadata from the `.companion.ome` and makes only the necessary modifications:
 
 - **Copied wholesale:** channel names, emission/excitation wavelengths, detector settings, acquisition date, instrument block — anything Bruker wrote
-- **Modified for the output file:** pixel dimensions (SizeX, SizeY, SizeZ, SizeT, SizeC=1), DimensionOrder (forced XYCZT), PhysicalSizeZ unit (forced to microns), TimeIncrement (set from user input), ImageID/PixelsID (unique per output), TiffData block (regenerated for single-channel layout), Channel block (only the one channel relevant to this output file)
+- **Modified for the output file:** pixel dimensions (SizeX, SizeY, SizeZ, SizeT, SizeC=1), DimensionOrder (forced XYCZT), PhysicalSizeZ unit (forced to microns), TimeIncrement (set from user input), ImageID/PixelsID (unique per output), TiffData block (regenerated for single-channel layout), Channel block (only the one channel relevant to this output file, with Name set to the role label)
 
 This approach ensures hardware identity (`Ch2`, `Ch3`, `Ch4`) and any other acquisition metadata survive into all downstream files without selective preservation.
 
@@ -320,4 +320,4 @@ ImagePlus[] imps = BF.openImagePlus(options);
 
 ---
 
-*PPP_Motility_Analysis — Design Document v0.3 — Provenzano Lab, University of Minnesota*
+*PPP_Motility_Analysis — Design Document v0.3.1 — Provenzano Lab, University of Minnesota*
