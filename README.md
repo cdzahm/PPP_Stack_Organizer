@@ -1,14 +1,12 @@
-# PPP_Motility_Analysis
+# PPP Stack Organizer
 
-A modular Fiji/ImageJ plugin suite for analyzing T cell motility from Bruker multiphoton microscopy data.
+A Fiji/ImageJ plugin for importing and organizing Bruker multiphoton microscopy acquisitions.
 
 Developed in the **Provenzano Lab, University of Minnesota**.
 
 ---
 
-## Plugins
-
-### PPP Stack Organizer ✅ Available now
+## Overview
 
 Opens a Bruker `.companion.ome` acquisition file, de-interleaves XY positions, splits channels by biological role, and saves each position × role combination as a calibrated single-channel OME-TIFF. Works as a standalone tool — useful for any Bruker multiphoton dataset regardless of downstream analysis.
 
@@ -21,17 +19,6 @@ Opens a Bruker `.companion.ome` acquisition file, de-interleaves XY positions, s
 - Saves calibrated single-channel OME-TIFFs to a `processed/` subfolder
 - Supports single-file and batch (recursive folder) modes
 
-### Motility Analysis Pipeline *(in development)*
-
-A suite of additional steps for quantifying T cell motility. Consumes the outputs of PPP Stack Organizer.
-
-| Step | Plugin | Status |
-|------|--------|--------|
-| 1 | Channel Processing (threshold, filter) | Planned |
-| 2 | Motility Analysis | Planned |
-| 3 | Z Projection + AVI Export | Planned |
-| — | Master Pipeline Runner | Planned |
-
 ---
 
 ## Requirements
@@ -41,11 +28,11 @@ A suite of additional steps for quantifying T cell motility. Consumes the output
 
 ## Installation
 
-Download the latest `.jar` from [Releases](../../releases) and drop it into your Fiji `plugins/` folder. Restart Fiji (or **Help > Refresh Menus**). Plugins appear under **Plugins > PPP Lab**.
+Download the latest `.jar` from [Releases](../../releases) and drop it into your Fiji `plugins/` folder. Restart Fiji (or **Help > Refresh Menus**). The plugin appears under **Plugins > PPP Lab > Stack Organizer**.
 
 ## Documentation
 
-See [`DESIGN.md`](DESIGN.md) for full project architecture, data format details, and per-step specifications.
+See [`DESIGN.md`](DESIGN.md) for full architecture, data format details, and implementation notes.
 
 ---
 
