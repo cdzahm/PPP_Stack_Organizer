@@ -42,7 +42,7 @@ public class StackOrganizer implements PlugIn {
     public void run(String arg) {
 
         // ── Dialog 1: mode and file/folder selection ──────────────────────────
-        GenericDialog d1 = new GenericDialog("Step 1 — Separate XY and C");
+        GenericDialog d1 = new GenericDialog("Stack Organizer");
         d1.addMessage("Select processing mode:");
         d1.addRadioButtonGroup("Mode:", new String[]{"Single file", "Batch folder"}, 1, 2, "Single file");
         d1.showDialog();
@@ -53,18 +53,18 @@ public class StackOrganizer implements PlugIn {
         List<String> filePaths = new ArrayList<>();
 
         if (!isBatch) {
-            IJ.showMessage("Step 1 — Select File",
+            IJ.showMessage("Stack Organizer — Select File",
                     "In the next dialog, navigate to your acquisition folder\n" +
                     "and select the .companion.ome file.");
             OpenDialog od = new OpenDialog("Select .companion.ome file", null);
             if (od.getPath() == null) return;
             if (!od.getPath().endsWith(".companion.ome")) {
-                IJ.error("Step 1", "Please select a .companion.ome file.");
+                IJ.error("Stack Organizer", "Please select a .companion.ome file.");
                 return;
             }
             filePaths.add(od.getPath());
         } else {
-            IJ.showMessage("Step 1 — Select Folder",
+            IJ.showMessage("Stack Organizer — Select Folder",
                     "In the next dialog, select the folder containing your .companion.ome files.\n\n" +
                     "Note: incomplete imaging runs or single images in the same folder will appear\n" +
                     "as errors in the log but will not stop processing of complete datasets.");
@@ -72,7 +72,7 @@ public class StackOrganizer implements PlugIn {
             if (dc.getDirectory() == null) return;
             collectCompanionOmeFiles(new File(dc.getDirectory()), filePaths);
             if (filePaths.isEmpty()) {
-                IJ.error("Step 1", "No .companion.ome files found in the selected folder.");
+                IJ.error("Stack Organizer", "No .companion.ome files found in the selected folder.");
                 return;
             }
         }
@@ -131,7 +131,7 @@ public class StackOrganizer implements PlugIn {
 
         String errorMsg = null;
         while (true) {
-            GenericDialog d2 = new GenericDialog("Step 1 — Parameters");
+            GenericDialog d2 = new GenericDialog("Stack Organizer — Parameters");
 
             if (errorMsg != null) {
                 d2.addMessage("⚠  " + errorMsg + "\nPlease correct and click OK.");
@@ -269,7 +269,7 @@ public class StackOrganizer implements PlugIn {
         if (isBatch && !failures.isEmpty()) LogUtils.failureSummary(failures);
 
         if (!isBatch) {
-            LogUtils.log("Step 1 complete.");
+            LogUtils.log("Stack Organizer complete.");
         } else {
             LogUtils.log("Batch complete. " + (total - failures.size()) + "/" + total + " files succeeded.");
         }
