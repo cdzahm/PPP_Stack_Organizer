@@ -1,11 +1,13 @@
 package provenzano_lab;
 
+import ij.CompositeImage;
 import ij.IJ;
 import ij.ImagePlus;
 import ij.ImageStack;
 import ij.gui.GenericDialog;
 import ij.io.DirectoryChooser;
 import ij.io.OpenDialog;
+import ij.measure.Calibration;
 import ij.plugin.PlugIn;
 import loci.formats.meta.IMetadata;
 import provenzano_lab.utils.BioFormatsUtils;
@@ -18,7 +20,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-public class Step1_SeparateXYandC implements PlugIn {
+public class StackOrganizer implements PlugIn {
 
     // Hardware channel name → default role label. Anything not in this table → "ignore".
     private static String defaultRole(String channelName) {
@@ -26,6 +28,14 @@ public class Step1_SeparateXYandC implements PlugIn {
         if ("Ch3".equals(channelName)) return "tcells";
         if ("Ch4".equals(channelName)) return "collagen";
         return "ignore";
+    }
+
+    // Role label → IJ LUT name for composite display.
+    private static String roleLUT(String role) {
+        if ("tumor".equals(role))    return "Red";
+        if ("tcells".equals(role))   return "Green";
+        if ("collagen".equals(role)) return "Grays";
+        return "Grays";
     }
 
     @Override
@@ -300,6 +310,56 @@ public class Step1_SeparateXYandC implements PlugIn {
         for (int xyIdx = 0; xyIdx < nXY; xyIdx++) {
             String xyLabel = String.format("XY%02d", xyIdx + 1);
 
+            // ── Multi-channel composite for this XY position ──────────────────
+            {
+                int nActive = activeCIdx.size();
+                // IJ hyperstack slice order: C varies fastest, then Z, then T.
+                ImageStack compositeStack = new ImageStack(source.getWidth(), source.getHeight());
+                for (int t = 0; t < nT_per; t++) {
+                    int srcFrame = t * nXY + xyIdx;
+                    for (int z = 0; z < nZ; z++) {
+                        for (int ai = 0; ai < nActive; ai++) {
+                            int cIdx = activeCIdx.get(ai);
+                            int srcSliceIdx = source.getStackIndex(cIdx + 1, z + 1, srcFrame + 1);
+                            compositeStack.addSlice(srcStack.getSliceLabel(srcSliceIdx),
+                                                    srcStack.getProcessor(srcSliceIdx));
+                        }
+                    }
+                }
+
+                String compositeFilename = basename + "_" + xyLabel + ".ome.tif";
+                String compositePath = outputDir + File.separator + compositeFilename;
+
+                ImagePlus baseImp = new ImagePlus(compositeFilename, compositeStack);
+                baseImp.setDimensions(nActive, nZ, nT_per);
+                baseImp.setOpenAsHyperStack(true);
+
+                Calibration cal = baseImp.getCalibration();
+                cal.pixelWidth    = pixelSizeXY;
+                cal.pixelHeight   = pixelSizeXY;
+                cal.pixelDepth    = voxelDepth;
+                cal.frameInterval = frameInterval;
+                cal.setUnit("micron");
+                cal.setTimeUnit("sec");
+
+                // Construct CompositeImage directly — avoids the stale-reference problem
+                // that occurs when using IJ.run("Make Composite") which creates a new object.
+                CompositeImage compositeImp = new CompositeImage(baseImp, CompositeImage.COMPOSITE);
+                for (int ai = 0; ai < nActive; ai++) {
+                    compositeImp.setC(ai + 1);
+                    IJ.run(compositeImp, roleLUT(activeRoles.get(ai)), "");
+                }
+
+                LogUtils.log("Saving composite: " + compositeFilename);
+                BioFormatsUtils.saveAsOMETIFF(compositeImp, compositePath);
+
+                if (!isBatch) {
+                    compositeImp.show();
+                } else {
+                    compositeImp.close();
+                }
+            }
+
             for (int ai = 0; ai < activeCIdx.size(); ai++) {
                 int cIdx   = activeCIdx.get(ai);
                 String role = activeRoles.get(ai);
@@ -336,11 +396,7 @@ public class Step1_SeparateXYandC implements PlugIn {
                         cIdx, role,
                         outPath);
 
-                if (!isBatch) {
-                    outImp.show();
-                } else {
-                    outImp.close();
-                }
+                outImp.close();
             }
         }
 
