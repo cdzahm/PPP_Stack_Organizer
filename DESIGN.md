@@ -1,33 +1,25 @@
-# PPP_Motility_Analysis — Project Design Document
+# PPP_Stack_Organizer — Project Design Document
 
 **Provenzano Lab | University of Minnesota**
-Version 0.4.0 — June 2026 | *DRAFT — Details subject to change*
+Version 0.4.1 — June 2026 | *DRAFT — Details subject to change*
 
-**Local project path:** `/Users/cdz/PPP Lab Files/Coding Projects/Cell Tracking/PPP_Motility_Analysis`
+**Local project path:** `/Users/cdz/PPP Lab Files/Coding Projects/ImageJ_Plugins/PPP_Stack_Organizer`
 
 ---
 
 ## 1. Project Overview
 
-PPP_Motility_Analysis is a suite of Fiji/ImageJ plugins for processing and analyzing intravital multiphoton microscopy data acquired on the Bruker system. The plugins are modular — each is independently usable — but are also callable from a master pipeline runner that executes all steps sequentially.
+PPP_Stack_Organizer is a Fiji/ImageJ plugin for importing and organizing Bruker multiphoton microscopy acquisition data. It opens `.companion.ome` files, de-interleaves multi-position acquisitions, splits channels by biological role, and saves each position × role combination as a calibrated single-channel OME-TIFF. It is a standalone tool usable independently of any downstream analysis pipeline.
 
-The primary scientific use case is quantifying T cell motility coefficients and related parameters within the tumor microenvironment of pancreatic ductal adenocarcinoma (PDAC) models, supporting ongoing CAR T cell therapy development.
+Developed in the Provenzano Lab at the University of Minnesota to support intravital multiphoton imaging of the tumor microenvironment in pancreatic ductal adenocarcinoma (PDAC) models.
 
 ---
 
 ## 2. Plugin Status Overview
 
-> ⚠ This document is a living design record. The motility analysis steps are planned but details are still being worked out. This document will be updated as each step is developed.
-
 | Plugin | Class | Menu Path | Status |
 |---|---|---|---|
 | PPP Stack Organizer | `StackOrganizer` | `Plugins > PPP Lab > Stack Organizer` | **Complete ✅** |
-| Channel Processing | `Step2_ProcessChannels` | `Plugins > PPP Lab > Channel Processing` | Planned |
-| Motility Analysis | `Step3_MotilityAnalysis` | `Plugins > PPP Lab > Motility Analysis` | Planned |
-| Z Projection + AVI Export | `Step4_ProjectAndExport` | `Plugins > PPP Lab > Z Projection + AVI Export` | Planned |
-| Master Pipeline Runner | `PPP_Pipeline_Runner` | `Plugins > PPP Lab > Run Full Pipeline` | Planned |
-
-> ℹ **Why XY separation and channel splitting are combined in Stack Organizer:** Both are pure structural reorganizations of the same source data. Combining them eliminates an intermediate multi-channel per-position file that nothing in the pipeline directly consumes, halves disk usage, and simplifies the output folder structure. The single-channel per-role files produced by Stack Organizer are what all downstream steps actually need.
 
 ---
 
@@ -110,7 +102,7 @@ After evaluating available options, **Java with an IJ1-style plugin structure bu
 Maven builds the project and packages it as a `.jar`. The `scijava-maven-plugin` deploys directly to a local Fiji installation:
 
 ```
-mvn -Dscijava.app.directory=/path/to/Fiji.app/
+mvn -Dscijava.app.directory=/Applications/Fiji
 ```
 
 This copies the compiled `.jar` and all dependencies to the correct `plugins/` or `jars/` subdirectory automatically.
@@ -121,11 +113,11 @@ All plugins reside in the Java package: `provenzano_lab`
 
 ### 4.4 Repository and Local Structure
 
-- **GitHub:** `github.com/cdzahm/PPP_Motility_Analysis/`
-- **Local:** `/Users/cdz/PPP Lab Files/Coding Projects/Cell Tracking/PPP_Motility_Analysis/`
+- **GitHub:** `github.com/cdzahm/PPP_Stack_Organizer/`
+- **Local:** `/Users/cdz/PPP Lab Files/Coding Projects/ImageJ_Plugins/PPP_Stack_Organizer/`
 
 ```
-PPP_Motility_Analysis/
+PPP_Stack_Organizer/
 ├── pom.xml                                       ← Maven build file
 ├── README.md
 ├── DESIGN.md
@@ -137,18 +129,14 @@ PPP_Motility_Analysis/
         │       │   ├── BioFormatsUtils.java      ← shared Bio-Formats I/O helpers
         │       │   ├── CalibrationUtils.java     ← spatial/temporal calibration helpers
         │       │   └── LogUtils.java             ← shared logging utilities
-        │       ├── StackOrganizer.java           ← PPP Stack Organizer (complete)
-        │       ├── Step2_ProcessChannels.java    (planned)
-        │       ├── Step3_MotilityAnalysis.java   (planned)
-        │       ├── Step4_ProjectAndExport.java   (planned)
-        │       └── PPP_Pipeline_Runner.java      (planned)
+        │       └── StackOrganizer.java           ← PPP Stack Organizer
         └── resources/
             └── plugins.config                    ← Fiji menu registration
 ```
 
 ### 4.5 Distribution
 
-Lab members install by downloading the latest `.jar` from the [GitHub Releases](../../releases) page and dropping it into their Fiji `plugins/` folder, then restarting Fiji (or **Help > Refresh Menus**). Plugins appear under **Plugins > PPP Lab**.
+Lab members install by downloading the latest `.jar` from the [GitHub Releases](../../releases) page and dropping it into their Fiji `plugins/` folder, then restarting Fiji (or **Help > Refresh Menus**). The plugin appears under **Plugins > PPP Lab > Stack Organizer**.
 
 ---
 
@@ -158,7 +146,7 @@ Lab members install by downloading the latest `.jar` from the [GitHub Releases](
 
 ### 5.1 Purpose
 
-Opens a Bruker `.companion.ome` file, de-interleaves XY positions, splits channels by biological role, and saves each position × role combination as a calibrated single-channel OME-TIFF. This is the only plugin that reads `.companion.ome` files directly; all downstream motility analysis steps consume the single-channel outputs produced here. Stack Organizer is also useful as a standalone tool for any lab workflow that needs clean, calibrated, separated stacks from a Bruker acquisition.
+Opens a Bruker `.companion.ome` file, de-interleaves XY positions, splits channels by biological role, and saves each position × role combination as a calibrated single-channel OME-TIFF.
 
 **When nXY=1**, no de-interleaving is performed — the plugin acts as a standardized importer, calibration corrector, and channel splitter.
 
@@ -242,37 +230,9 @@ Role labels are written to both the output filename and the OME `Channel:Name` f
 
 ---
 
-## 6. Planned Motility Analysis Steps (Details TBD)
+## 6. Coding Conventions
 
-> ⚠ The following steps are described at a high level only. All details are subject to change during development.
-
-### 6.1 Channel Processing
-
-Applies per-channel preprocessing: Gaussian blur, background subtraction, and thresholding. **This step requires human review and is not fully automated.**
-
-- Input: single-channel OME-TIFFs from Stack Organizer (`_tcells`, `_tumor`, `_collagen`)
-- Batch default: same filter/threshold parameters applied to all files in a dataset
-- Per-image override: user can flag individual images for manual adjustment when defaults don't work
-- A single threshold and filter setting generally works across all images within one dataset, but may need adjustment between datasets or for outlier images
-- Exact operations, filter types, and threshold methods TBD during development
-
-### 6.2 Motility Analysis
-
-Operates on the processed T cell channel. Calculates motility coefficient and other quantitative parameters from cell tracking data. This is the **core scientific output** of the pipeline. Tracking algorithm (manual ROI-based, TrackMate integration, or custom), specific metrics, and output format are all TBD.
-
-### 6.3 Z Projection and AVI Export
-
-Generates a maximum intensity Z-projection across channels with user-defined LUTs and channel colors. Converts the projected time series into an `.avi` video for presentation and publication. Because role identity is encoded in each file's name and OME metadata, LUT assignment can be driven automatically by role. Codec, compression, and frame rate TBD.
-
-### 6.4 Master Pipeline Runner
-
-A single plugin that calls all steps in sequence with a unified setup dialog. Each step also remains independently callable for re-running individual steps on already-processed data. Handling of Channel Processing manual intervention within the runner is TBD.
-
----
-
-## 7. Coding Conventions
-
-### 7.1 General
+### 6.1 General
 
 - Java, targeting **Java 8** (Azul Zulu JDK 8 recommended), consistent with Fiji's bundled JRE
 - IJ1-style plugins implementing `ij.plugin.PlugIn` (`run(String arg)` entry point)
@@ -280,7 +240,7 @@ A single plugin that calls all steps in sequence with a unified setup dialog. Ea
 - Shared utilities in `provenzano_lab.utils` — Bio-Formats I/O, calibration, and logging never duplicated across steps
 - `GenericDialog` used for all user-facing dialogs — ensures macro-recordability
 
-### 7.2 Bio-Formats API Usage
+### 6.2 Bio-Formats API Usage
 
 **Import:**
 ```java
@@ -297,29 +257,22 @@ ImagePlus[] imps = BF.openImagePlus(options);
 
 **Export:** `OMETiffWriter` with `COMPRESSION_UNCOMPRESSED` and `setWriteSequentially(true)` called before `setId()`. The default `ImageWriter` (LZW) is not used — it is CPU-limited and extremely slow on large hyperstacks.
 
-### 7.3 Error Handling
+### 6.3 Error Handling
 
 - All Bio-Formats operations wrapped in try/catch
 - Batch mode: per-file exceptions caught, logged, skipped — processing continues
 - Single file mode: `IJ.error` dialog with clear message on failure
 
-### 7.4 Macro Recordability
+### 6.4 Macro Recordability
 
 `GenericDialog` ensures all plugins are macro-recordable, enabling scripting and batch automation beyond the built-in batch mode for advanced users.
 
 ---
 
-## 8. Open Questions / Items TBD
+## 7. Open Questions / Items TBD
 
-- **Channel Processing:** Exact preprocessing operations per channel (Gaussian sigma, threshold method, background subtraction approach)
-- **Channel Processing:** UI design for per-image manual override — flag before batch run, or interrupt during?
-- **Motility Analysis:** Tracking algorithm — manual ROI-based, TrackMate integration, or custom implementation?
-- **Motility Analysis:** Full list of motility parameters beyond motility coefficient
-- **Z Projection + AVI:** AVI codec and compression settings
-- **Z Projection + AVI:** Channel color/LUT assignment UI (may be driven automatically from role labels)
-- **Master runner:** Channel Processing manual intervention handling
 - **Build environment:** Confirm Azul Zulu JDK 8 setup on development machine before coding begins
 
 ---
 
-*PPP_Motility_Analysis — Design Document v0.4.0 — Provenzano Lab, University of Minnesota*
+*PPP_Stack_Organizer — Design Document v0.4.1 — Provenzano Lab, University of Minnesota*
