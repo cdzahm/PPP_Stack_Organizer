@@ -6,20 +6,33 @@ Developed in the **Provenzano Lab, University of Minnesota**.
 
 ---
 
-## Overview
+## Plugins
 
-This suite provides a standardized, reproducible pipeline for processing intravital multiphoton imaging data. Each pipeline step is an independent plugin, and a master runner can execute all steps sequentially.
+### PPP Stack Organizer ✅ Available now
 
-## Pipeline Steps
+Opens a Bruker `.companion.ome` acquisition file, de-interleaves XY positions, splits channels by biological role, and saves each position × role combination as a calibrated single-channel OME-TIFF. Works as a standalone tool — useful for any Bruker multiphoton dataset regardless of downstream analysis.
+
+**Appears in Fiji under:** `Plugins > PPP Lab > Stack Organizer`
+
+**What it does:**
+- Reads `.companion.ome` files via Bio-Formats
+- De-interleaves multi-position acquisitions (handles any nXY; nXY=1 is passthrough mode)
+- Splits channels by biological role (tumor, T cells, collagen) based on hardware detector names
+- Saves calibrated single-channel OME-TIFFs to a `processed/` subfolder
+- Supports single-file and batch (recursive folder) modes
+
+### Motility Analysis Pipeline *(in development)*
+
+A suite of additional steps for quantifying T cell motility. Consumes the outputs of PPP Stack Organizer.
 
 | Step | Plugin | Status |
 |------|--------|--------|
-| 1 | XY Series Separation | **In Development** |
-| 2 | Channel Splitting | Planned |
-| 3 | Channel Processing (threshold, filter) | Planned |
-| 4 | Motility Analysis | Planned |
-| 5 | Z Projection + AVI Export | Planned |
+| 1 | Channel Processing (threshold, filter) | Planned |
+| 2 | Motility Analysis | Planned |
+| 3 | Z Projection + AVI Export | Planned |
 | — | Master Pipeline Runner | Planned |
+
+---
 
 ## Requirements
 
@@ -28,7 +41,7 @@ This suite provides a standardized, reproducible pipeline for processing intravi
 
 ## Installation
 
-Place compiled `.class` files (or `.jar`) into your Fiji `plugins/` folder. Plugins will appear under **Plugins > Provenzano Lab**.
+Download the latest `.jar` from [Releases](../../releases) and drop it into your Fiji `plugins/` folder. Restart Fiji (or **Help > Refresh Menus**). Plugins appear under **Plugins > PPP Lab**.
 
 ## Documentation
 
@@ -36,4 +49,4 @@ See [`DESIGN.md`](DESIGN.md) for full project architecture, data format details,
 
 ---
 
-*Part of the [Fiji-ImageJ_Plugins](https://github.com/cdzahm/Fiji-ImageJ_Plugins) collection.*
+*Provenzano Lab, University of Minnesota*
