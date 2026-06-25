@@ -141,8 +141,11 @@ public class StackOrganizer implements PlugIn {
             d2.addNumericField("Channels (nC) [from metadata, editable]:", nC, 0);
             d2.addNumericField("Z planes (nZ) [from metadata, editable]:", nZ, 0);
             d2.addMessage("Total timepoints (nT total): " + metaNT + "  [read-only, from metadata]");
+            // NOTE: GenericDialog labels are static — they cannot update as the user edits nXY.
+            // tPerPos is computed from the current nXY default for this dialog open; the actual
+            // value used for processing is always recomputed from the submitted nXY after OK.
             int tPerPos = (nXY > 0) ? metaNT / nXY : 0;
-            d2.addMessage("Timepoints per position: " + tPerPos + "  (= nT / nXY, read-only)");
+            d2.addMessage("Timepoints per position: " + tPerPos + "  (= " + metaNT + " / " + nXY + ", recalculated on OK)");
             d2.addNumericField("Time interval (seconds):", interval, 1);
             d2.addNumericField("Pixel size XY (microns):", pixXY, 6);
             d2.addNumericField("Voxel depth Z (microns):", voxZ, 6);
