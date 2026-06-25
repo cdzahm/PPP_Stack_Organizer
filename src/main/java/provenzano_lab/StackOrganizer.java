@@ -4,6 +4,7 @@ import ij.CompositeImage;
 import ij.IJ;
 import ij.ImagePlus;
 import ij.ImageStack;
+import ij.gui.DialogListener;
 import ij.gui.GenericDialog;
 import ij.io.DirectoryChooser;
 import ij.io.OpenDialog;
@@ -14,6 +15,9 @@ import provenzano_lab.utils.BioFormatsUtils;
 import provenzano_lab.utils.CalibrationUtils;
 import provenzano_lab.utils.LogUtils;
 
+import java.awt.AWTEvent;
+import java.awt.Component;
+import java.awt.Label;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -129,6 +133,7 @@ public class StackOrganizer implements PlugIn {
         String[] roles   = new String[nCFixed];
         for (int c = 0; c < nCFixed; c++) roles[c] = defaultRole(chNames[c]);
 
+        final int finalMetaNT = metaNT;
         String errorMsg = null;
         while (true) {
             GenericDialog d2 = new GenericDialog("Stack Organizer — Parameters");
@@ -140,12 +145,12 @@ public class StackOrganizer implements PlugIn {
             d2.addNumericField("Number of XY positions (nXY):", nXY, 0);
             d2.addNumericField("Channels (nC) [from metadata, editable]:", nC, 0);
             d2.addNumericField("Z planes (nZ) [from metadata, editable]:", nZ, 0);
-            d2.addMessage("Total timepoints (nT total): " + metaNT + "  [read-only, from metadata]");
-            // NOTE: GenericDialog labels are static — they cannot update as the user edits nXY.
-            // tPerPos is computed from the current nXY default for this dialog open; the actual
-            // value used for processing is always recomputed from the submitted nXY after OK.
-            int tPerPos = (nXY > 0) ? metaNT / nXY : 0;
-            d2.addMessage("Timepoints per position: " + tPerPos + "  (= " + metaNT + " / " + nXY + ", recalculated on OK)");
+            d2.addMessage("Total timepoints (nT total): " + finalMetaNT + "  [read-only, from metadata]");
+            
+            int tPerPos = (nXY > 0) ? finalMetaNT / nXY : 0;
+            d2.addMessage("Timepoints per position: " + tPerPos + "  (= " + finalMetaNT + " / " + nXY + ")");
+            final Component tPerPosComponent = d2.getMessage();
+
             d2.addNumericField("Time interval (seconds):", interval, 1);
             d2.addNumericField("Pixel size XY (microns):", pixXY, 6);
             d2.addNumericField("Voxel depth Z (microns):", voxZ, 6);
@@ -155,6 +160,37 @@ public class StackOrganizer implements PlugIn {
             for (int c = 0; c < nCFixed; c++) {
                 d2.addStringField(chNames[c] + " role:", roles[c], 12);
             }
+
+            d2.addDialogListener(new DialogListener() {
+                @Override
+                public boolean dialogItemChanged(GenericDialog gd, AWTEvent e) {
+                    int currentNXY = (int) gd.getNextNumber();
+                    gd.getNextNumber(); // skip nC
+                    gd.getNextNumber(); // skip nZ
+                    gd.getNextNumber(); // skip interval
+                    gd.getNextNumber(); // skip pixXY
+                    gd.getNextNumber(); // skip voxZ
+                    for (int c = 0; c < nCFixed; c++) {
+                        gd.getNextString(); // skip roles
+                    }
+
+                    if (gd.invalidNumber()) {
+                        return false;
+                    }
+
+                    if (currentNXY > 0) {
+                        int currentTPerPos = finalMetaNT / currentNXY;
+                        if (tPerPosComponent instanceof Label) {
+                            ((Label) tPerPosComponent).setText("Timepoints per position: " + currentTPerPos + "  (= " + finalMetaNT + " / " + currentNXY + ")");
+                        }
+                    } else {
+                        if (tPerPosComponent instanceof Label) {
+                            ((Label) tPerPosComponent).setText("Timepoints per position: 0  (= " + finalMetaNT + " / " + currentNXY + ")");
+                        }
+                    }
+                    return true;
+                }
+            });
 
             d2.showDialog();
             if (d2.wasCanceled()) return;
