@@ -7,14 +7,14 @@ import ij.ImageStack;
 import ij.gui.DialogListener;
 import ij.gui.GenericDialog;
 import ij.io.DirectoryChooser;
-import ij.io.OpenDialog;
-import ij.measure.Calibration;
 import ij.plugin.PlugIn;
 import loci.formats.meta.IMetadata;
 import provenzano_lab.utils.BioFormatsUtils;
 import provenzano_lab.utils.CalibrationUtils;
 import provenzano_lab.utils.LogUtils;
+import provenzano_lab.utils.PrairieXmlUtils;
 
+import javax.swing.JFileChooser;
 import java.awt.AWTEvent;
 import java.awt.Component;
 import java.awt.Label;
@@ -57,52 +57,78 @@ public class StackOrganizer implements PlugIn {
         List<String> filePaths = new ArrayList<>();
 
         if (!isBatch) {
-            IJ.showMessage("Stack Organizer — Select File",
-                    "In the next dialog, navigate to your acquisition folder\n" +
-                    "and select the .companion.ome file.");
-            OpenDialog od = new OpenDialog("Select .companion.ome file", null);
-            if (od.getPath() == null) return;
-            if (!od.getPath().endsWith(".companion.ome")) {
-                IJ.error("Stack Organizer", "Please select a .companion.ome file.");
+            IJ.showMessage("Stack Organizer — Select Acquisition",
+                    "In the next dialog, select the acquisition file or its containing folder.\n\n" +
+                    "Select the PrairieView .xml file for the acquisition, or the folder\n" +
+                    "containing it.");
+            JFileChooser fc = new JFileChooser();
+            fc.setDialogTitle("Select acquisition file or folder");
+            fc.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
+            int result = fc.showOpenDialog(null);
+            if (result != JFileChooser.APPROVE_OPTION) return;
+
+            String resolved;
+            try {
+                resolved = BioFormatsUtils.resolveAcquisitionPath(fc.getSelectedFile());
+            } catch (Exception e) {
+                IJ.error("Stack Organizer", e.getMessage());
                 return;
             }
-            filePaths.add(od.getPath());
+            filePaths.add(resolved);
         } else {
             IJ.showMessage("Stack Organizer — Select Folder",
-                    "In the next dialog, select the folder containing your .companion.ome files.\n\n" +
-                    "Note: incomplete imaging runs or single images in the same folder will appear\n" +
-                    "as errors in the log but will not stop processing of complete datasets.");
-            DirectoryChooser dc = new DirectoryChooser("Select folder containing .companion.ome files");
+                    "In the next dialog, select the root folder to search recursively.\n\n" +
+                    "Finds one PrairieView .xml file per acquisition folder.\n\n" +
+                    "Note: incomplete imaging runs, single images, or ambiguous folders (multiple\n" +
+                    ".xml files in one folder) will appear as skipped/errors in the log but will\n" +
+                    "not stop processing of complete datasets.");
+            DirectoryChooser dc = new DirectoryChooser("Select root folder");
             if (dc.getDirectory() == null) return;
-            collectCompanionOmeFiles(new File(dc.getDirectory()), filePaths);
+            collectAcquisitionFiles(new File(dc.getDirectory()), filePaths);
             if (filePaths.isEmpty()) {
-                IJ.error("Stack Organizer", "No .companion.ome files found in the selected folder.");
+                IJ.error("Stack Organizer", "No .xml acquisition files found in the selected folder.");
                 return;
             }
         }
 
         // ── Pre-read metadata from the first file ─────────────────────────────
-        int metaNC = 3, metaNZ = 20, metaNT = 120;
-        double metaPixXY = 1.0, metaVoxZ = 1.0;
+        String firstPath = filePaths.get(0);
+
+        int metaNC = 3, metaNZ = 20, metaNT = 60, metaNXY = 2;
+        double metaPixXY = 1.0, metaVoxZ = 1.0, metaInterval = 60.0;
         String[] channelNames = null;
         IMetadata firstFileMeta = null;
 
         try {
-            // Open via Bio-Formats to get dimension and calibration values
-            ImagePlus[] probe = BioFormatsUtils.openWithBioFormats(filePaths.get(0));
+            firstFileMeta = BioFormatsUtils.readSourceMetadata(firstPath);
+
+            // One Bio-Formats series per XY position, already fully split by PrairieReader —
+            // series count IS the real nXY, and each series' nFrames is already per-position.
+            ImagePlus[] probe = BioFormatsUtils.openWithBioFormats(firstPath);
             if (probe != null && probe.length > 0 && probe[0] != null) {
-                ImagePlus p = probe[0];
-                metaNC = p.getNChannels();
-                metaNZ = p.getNSlices();
-                metaNT = p.getNFrames();
-                double[] cal = CalibrationUtils.readCalibration(p);
+                metaNXY = probe.length;
+                ImagePlus p0 = probe[0];
+                metaNC = p0.getNChannels();
+                metaNZ = p0.getNSlices();
+                metaNT = p0.getNFrames();
+                double[] cal = CalibrationUtils.readCalibration(p0);
                 metaPixXY = cal[0];
-                metaVoxZ  = cal[2];
-                p.close();
-                for (int i = 1; i < probe.length; i++) if (probe[i] != null) probe[i].close();
+                for (ImagePlus pp : probe) if (pp != null) pp.close();
             }
-            // Read OME metadata separately to get hardware channel names
-            firstFileMeta = BioFormatsUtils.readSourceMetadata(filePaths.get(0));
+            // IMetadata from PrairieReader leaves PhysicalSizeZ / TimeIncrement null
+            // (confirmed via direct testing) — read them from the XML directly instead.
+            // Prairie's XML is unambiguously in microns, so no unit-forcing workaround is needed.
+            try {
+                metaVoxZ = PrairieXmlUtils.readVoxelDepthUm(firstPath);
+            } catch (Exception e) {
+                LogUtils.log("Warning: could not read voxel depth from Prairie XML: " + e.getMessage());
+            }
+            try {
+                metaInterval = PrairieXmlUtils.readFrameIntervalSec(firstPath);
+            } catch (Exception e) {
+                LogUtils.log("Warning: could not read frame interval from Prairie XML: " + e.getMessage());
+            }
+
             int nCMeta = firstFileMeta.getChannelCount(0);
             if (nCMeta > 0) metaNC = nCMeta;
             channelNames = new String[metaNC];
@@ -124,10 +150,10 @@ public class StackOrganizer implements PlugIn {
         final String[] chNames = channelNames;
 
         // ── Dialog 2: parameters + channel roles (loops until validation passes) ──
-        int     nXY      = 2;
+        int     nXY      = metaNXY;
         int     nC       = metaNC;
         int     nZ       = metaNZ;
-        double  interval = 60.0;
+        double  interval = metaInterval;
         double  pixXY    = metaPixXY;
         double  voxZ     = metaVoxZ;
         String[] roles   = new String[nCFixed];
@@ -142,21 +168,20 @@ public class StackOrganizer implements PlugIn {
                 d2.addMessage("⚠  " + errorMsg + "\nPlease correct and click OK.");
             }
 
+            d2.addMessage("Auto-detected XY positions: " + metaNXY + "  (Bio-Formats series count — positions already separated)");
             d2.addNumericField("Number of XY positions (nXY):", nXY, 0);
             d2.addNumericField("Channels (nC) [from metadata, editable]:", nC, 0);
             d2.addNumericField("Z planes (nZ) [from metadata, editable]:", nZ, 0);
-            d2.addMessage("Total timepoints (nT total): " + finalMetaNT + "  [read-only, from metadata]");
-            
-            int tPerPos = (nXY > 0) ? finalMetaNT / nXY : 0;
-            d2.addMessage("Timepoints per position: " + tPerPos + "  (= " + finalMetaNT + " / " + nXY + ")");
+            d2.addMessage("Timepoints per position (nT): " + finalMetaNT +
+                    "  [read-only, from metadata — already separated per position]");
             final Component tPerPosComponent = d2.getMessage();
 
             d2.addNumericField("Time interval (seconds):", interval, 1);
             d2.addNumericField("Pixel size XY (microns):", pixXY, 6);
             d2.addNumericField("Voxel depth Z (microns):", voxZ, 6);
             d2.addMessage("─── Channel role assignments ───\n" +
-                          "Use 'ignore' to skip a channel. Roles drive the output filename\n" +
-                          "and OME Channel:Name. No two active channels may share a role.");
+                          "Use 'ignore' to skip a channel. Roles drive the output filename.\n" +
+                          "No two active channels may share a role.");
             for (int c = 0; c < nCFixed; c++) {
                 d2.addStringField(chNames[c] + " role:", roles[c], 12);
             }
@@ -164,7 +189,7 @@ public class StackOrganizer implements PlugIn {
             d2.addDialogListener(new DialogListener() {
                 @Override
                 public boolean dialogItemChanged(GenericDialog gd, AWTEvent e) {
-                    int currentNXY = (int) gd.getNextNumber();
+                    gd.getNextNumber(); // skip nXY (no effect on nT display on this path)
                     gd.getNextNumber(); // skip nC
                     gd.getNextNumber(); // skip nZ
                     gd.getNextNumber(); // skip interval
@@ -173,22 +198,7 @@ public class StackOrganizer implements PlugIn {
                     for (int c = 0; c < nCFixed; c++) {
                         gd.getNextString(); // skip roles
                     }
-
-                    if (gd.invalidNumber()) {
-                        return false;
-                    }
-
-                    if (currentNXY > 0) {
-                        int currentTPerPos = finalMetaNT / currentNXY;
-                        if (tPerPosComponent instanceof Label) {
-                            ((Label) tPerPosComponent).setText("Timepoints per position: " + currentTPerPos + "  (= " + finalMetaNT + " / " + currentNXY + ")");
-                        }
-                    } else {
-                        if (tPerPosComponent instanceof Label) {
-                            ((Label) tPerPosComponent).setText("Timepoints per position: 0  (= " + finalMetaNT + " / " + currentNXY + ")");
-                        }
-                    }
-                    return true;
+                    return !gd.invalidNumber();
                 }
             });
 
@@ -235,15 +245,6 @@ public class StackOrganizer implements PlugIn {
             break;
         }
 
-        // Warn if nT not evenly divisible by nXY
-        if (nXY > 1 && metaNT % nXY != 0) {
-            GenericDialog warn = new GenericDialog("Warning");
-            warn.addMessage("nT total (" + metaNT + ") is not evenly divisible by nXY (" + nXY + ").\n" +
-                            "The last XY position will have fewer timepoints.\nContinue anyway?");
-            warn.showDialog();
-            if (warn.wasCanceled()) return;
-        }
-
         // Build the active-channel list: (sourceChannelIndex, role)
         final List<Integer> activeCIdx  = new ArrayList<>();
         final List<String>  activeRoles = new ArrayList<>();
@@ -256,12 +257,10 @@ public class StackOrganizer implements PlugIn {
 
         // Freeze dialog values for use inside the processing loop
         final int    finalNXY      = nXY;
-        final int    finalNC       = nC;
         final int    finalNZ       = nZ;
         final double finalInterval = interval;
         final double finalPixXY    = pixXY;
         final double finalVoxZ     = voxZ;
-        final IMetadata finalFirstMeta = firstFileMeta;
 
         // ── Process files ──────────────────────────────────────────────────────
         List<String> failures = new ArrayList<>();
@@ -270,10 +269,9 @@ public class StackOrganizer implements PlugIn {
         for (int fileIdx = 0; fileIdx < total; fileIdx++) {
             String filePath = filePaths.get(fileIdx);
             try {
-                IMetadata fileMeta;
                 if (isBatch && fileIdx > 0) {
-                    // Re-read OME metadata for each batch file; validate channel mapping matches
-                    fileMeta = BioFormatsUtils.readSourceMetadata(filePath);
+                    // Validate channel mapping matches the confirmed-once dialog values
+                    IMetadata fileMeta = BioFormatsUtils.readSourceMetadata(filePath);
                     int fileNC = fileMeta.getChannelCount(0);
                     if (fileNC != nCFixed) {
                         throw new Exception("Channel count mismatch: expected " + nCFixed +
@@ -287,11 +285,9 @@ public class StackOrganizer implements PlugIn {
                                                 ": expected '" + chNames[c] + "', got '" + name + "'");
                         }
                     }
-                } else {
-                    fileMeta = finalFirstMeta;
                 }
 
-                processFile(filePath, fileMeta, finalNXY, finalNC, finalNZ,
+                processFile(filePath, finalNXY, finalNZ,
                             finalInterval, finalPixXY, finalVoxZ,
                             activeCIdx, activeRoles, isBatch);
 
@@ -314,12 +310,11 @@ public class StackOrganizer implements PlugIn {
         }
     }
 
-    // ── Core processing: open file, de-interleave XY, split channels, save ───
+    // ── PrairieReader already returns one Bio-Formats series per XY position — no
+    //    de-interleave math, only channel-splitting per position ──────────────────────
     private void processFile(
             String filePath,
-            IMetadata sourceMeta,
-            int nXY,
-            int nC,
+            int userNXY,
             int nZ,
             double frameInterval,
             double pixelSizeXY,
@@ -333,113 +328,122 @@ public class StackOrganizer implements PlugIn {
         if (imps == null || imps.length == 0 || imps[0] == null) {
             throw new Exception("Bio-Formats returned no images.");
         }
-        ImagePlus source = imps[0];
-        for (int i = 1; i < imps.length; i++) if (imps[i] != null) imps[i].close();
 
-        int nT_total = source.getNFrames();
-        // When nXY=1 there is no interleaving; nT_per equals nT_total.
-        int nT_per = (nXY > 1) ? nT_total / nXY : nT_total;
+        // One Bio-Formats series per XY position (confirmed: setConcatenate(true) does NOT
+        // merge Prairie's already-distinct per-position series). Series/Image index order is
+        // used directly as position ordinal — no coordinate math needed.
+        int nXY = imps.length;
+        if (nXY != userNXY) {
+            LogUtils.log("NOTE: " + new File(filePath).getName() + " — Bio-Formats reports " + nXY +
+                    " XY position series; using " + nXY + " (entered nXY=" + userNXY +
+                    " is informational only — positions are already separated, no de-interleave math applies).");
+        }
 
         String outputDir = getOutputDir(filePath);
         new File(outputDir).mkdirs();
         String basename = getBasename(filePath);
 
-        ImageStack srcStack = source.getStack();
-
         for (int xyIdx = 0; xyIdx < nXY; xyIdx++) {
-            String xyLabel = String.format("XY%02d", xyIdx + 1);
+            ImagePlus source = imps[xyIdx];
+            if (source == null) continue;
+            int nT_per = source.getNFrames(); // already the per-position extent
+            ImageStack srcStack = source.getStack();
 
-            // ── Multi-channel composite for this XY position ──────────────────
-            {
-                int nActive = activeCIdx.size();
-                // IJ hyperstack slice order: C varies fastest, then Z, then T.
-                ImageStack compositeStack = new ImageStack(source.getWidth(), source.getHeight());
-                for (int t = 0; t < nT_per; t++) {
-                    int srcFrame = t * nXY + xyIdx;
-                    for (int z = 0; z < nZ; z++) {
-                        for (int ai = 0; ai < nActive; ai++) {
-                            int cIdx = activeCIdx.get(ai);
-                            int srcSliceIdx = source.getStackIndex(cIdx + 1, z + 1, srcFrame + 1);
-                            compositeStack.addSlice(srcStack.getSliceLabel(srcSliceIdx),
-                                                    srcStack.getProcessor(srcSliceIdx));
-                        }
+            writeXYPosition(source, srcStack, xyIdx, nT_per, nZ,
+                    pixelSizeXY, voxelDepth, frameInterval,
+                    activeCIdx, activeRoles,
+                    outputDir, basename, isBatch);
+
+            source.close();
+        }
+    }
+
+    // ── Write the composite + per-role single-channel outputs for one XY position ──
+    private void writeXYPosition(
+            ImagePlus source,
+            ImageStack srcStack,
+            int xyIdx,
+            int nT_per,
+            int nZ,
+            double pixelSizeXY,
+            double voxelDepth,
+            double frameInterval,
+            List<Integer> activeCIdx,
+            List<String> activeRoles,
+            String outputDir,
+            String basename,
+            boolean isBatch) throws Exception {
+
+        String xyLabel = String.format("XY%02d", xyIdx + 1);
+
+        // ── Multi-channel composite for this XY position ──────────────────
+        {
+            int nActive = activeCIdx.size();
+            // IJ hyperstack slice order: C varies fastest, then Z, then T.
+            ImageStack compositeStack = new ImageStack(source.getWidth(), source.getHeight());
+            for (int t = 0; t < nT_per; t++) {
+                for (int z = 0; z < nZ; z++) {
+                    for (int ai = 0; ai < nActive; ai++) {
+                        int cIdx = activeCIdx.get(ai);
+                        int srcSliceIdx = source.getStackIndex(cIdx + 1, z + 1, t + 1);
+                        compositeStack.addSlice(srcStack.getSliceLabel(srcSliceIdx),
+                                                srcStack.getProcessor(srcSliceIdx));
                     }
-                }
-
-                String compositeFilename = basename + "_" + xyLabel + ".ome.tif";
-                String compositePath = outputDir + File.separator + compositeFilename;
-
-                ImagePlus baseImp = new ImagePlus(compositeFilename, compositeStack);
-                baseImp.setDimensions(nActive, nZ, nT_per);
-                baseImp.setOpenAsHyperStack(true);
-
-                Calibration cal = baseImp.getCalibration();
-                cal.pixelWidth    = pixelSizeXY;
-                cal.pixelHeight   = pixelSizeXY;
-                cal.pixelDepth    = voxelDepth;
-                cal.frameInterval = frameInterval;
-                cal.setUnit("micron");
-                cal.setTimeUnit("sec");
-
-                // Construct CompositeImage directly — avoids the stale-reference problem
-                // that occurs when using IJ.run("Make Composite") which creates a new object.
-                CompositeImage compositeImp = new CompositeImage(baseImp, CompositeImage.COMPOSITE);
-                for (int ai = 0; ai < nActive; ai++) {
-                    compositeImp.setC(ai + 1);
-                    IJ.run(compositeImp, roleLUT(activeRoles.get(ai)), "");
-                }
-
-                LogUtils.log("Saving composite: " + compositeFilename);
-                BioFormatsUtils.saveAsOMETIFF(compositeImp, compositePath);
-
-                if (!isBatch) {
-                    compositeImp.show();
-                } else {
-                    compositeImp.close();
                 }
             }
 
-            for (int ai = 0; ai < activeCIdx.size(); ai++) {
-                int cIdx   = activeCIdx.get(ai);
-                String role = activeRoles.get(ai);
+            String compositeFilename = basename + "_" + xyLabel + ".tif";
+            String compositePath = outputDir + File.separator + compositeFilename;
 
-                // Build a single-channel stack for this XY position and channel.
-                // Interleave pattern: timepoint t at position xyIdx lives at source frame
-                // index (t * nXY + xyIdx). When nXY=1 this simplifies to frame t.
-                ImageStack outStack = new ImageStack(source.getWidth(), source.getHeight());
-                for (int t = 0; t < nT_per; t++) {
-                    int srcFrame = t * nXY + xyIdx; // 0-indexed in source
-                    for (int z = 0; z < nZ; z++) {
-                        int srcIdx = source.getStackIndex(cIdx + 1, z + 1, srcFrame + 1);
-                        outStack.addSlice(srcStack.getSliceLabel(srcIdx),
-                                          srcStack.getProcessor(srcIdx));
-                    }
-                }
+            ImagePlus baseImp = new ImagePlus(compositeFilename, compositeStack);
+            baseImp.setDimensions(nActive, nZ, nT_per);
+            baseImp.setOpenAsHyperStack(true);
+            CalibrationUtils.applyCalibration(baseImp, pixelSizeXY, pixelSizeXY, voxelDepth, frameInterval);
 
-                String outFilename = basename + "_" + xyLabel + "_" + role + ".ome.tif";
-                ImagePlus outImp = new ImagePlus(outFilename, outStack);
-                outImp.setDimensions(1, nZ, nT_per);
-                outImp.setOpenAsHyperStack(true);
+            // Construct CompositeImage directly — avoids the stale-reference problem
+            // that occurs when using IJ.run("Make Composite") which creates a new object.
+            CompositeImage compositeImp = new CompositeImage(baseImp, CompositeImage.COMPOSITE);
+            for (int ai = 0; ai < nActive; ai++) {
+                compositeImp.setC(ai + 1);
+                IJ.run(compositeImp, roleLUT(activeRoles.get(ai)), "");
+            }
 
-                String outPath  = outputDir + File.separator + outFilename;
-                String imageId  = "Image:"  + xyLabel + "_" + role;
-                String pixelsId = "Pixels:" + xyLabel + "_" + role;
+            LogUtils.log("Saving composite: " + compositeFilename);
+            BioFormatsUtils.saveAsTiff(compositeImp, compositePath);
 
-                LogUtils.log("Saving: " + outFilename);
-                BioFormatsUtils.saveChannelAsOMETIFF(
-                        outImp, sourceMeta,
-                        imageId, pixelsId,
-                        nZ, nT_per,
-                        pixelSizeXY, pixelSizeXY, voxelDepth,
-                        frameInterval,
-                        cIdx, role,
-                        outPath);
-
-                outImp.close();
+            if (!isBatch) {
+                compositeImp.show();
+            } else {
+                compositeImp.close();
             }
         }
 
-        source.close();
+        for (int ai = 0; ai < activeCIdx.size(); ai++) {
+            int cIdx   = activeCIdx.get(ai);
+            String role = activeRoles.get(ai);
+
+            ImageStack outStack = new ImageStack(source.getWidth(), source.getHeight());
+            for (int t = 0; t < nT_per; t++) {
+                for (int z = 0; z < nZ; z++) {
+                    int srcIdx = source.getStackIndex(cIdx + 1, z + 1, t + 1);
+                    outStack.addSlice(srcStack.getSliceLabel(srcIdx),
+                                      srcStack.getProcessor(srcIdx));
+                }
+            }
+
+            String outFilename = basename + "_" + xyLabel + "_" + role + ".tif";
+            ImagePlus outImp = new ImagePlus(outFilename, outStack);
+            outImp.setDimensions(1, nZ, nT_per);
+            outImp.setOpenAsHyperStack(true);
+            CalibrationUtils.applyCalibration(outImp, pixelSizeXY, pixelSizeXY, voxelDepth, frameInterval);
+
+            String outPath = outputDir + File.separator + outFilename;
+
+            LogUtils.log("Saving: " + outFilename);
+            BioFormatsUtils.saveAsTiff(outImp, outPath);
+
+            outImp.close();
+        }
     }
 
     private String getOutputDir(String filePath) {
@@ -448,18 +452,36 @@ public class StackOrganizer implements PlugIn {
 
     private String getBasename(String filePath) {
         String name = new File(filePath).getName();
-        if (name.endsWith(".companion.ome")) {
-            name = name.substring(0, name.length() - ".companion.ome".length());
+        if (name.toLowerCase().endsWith(".xml")) {
+            name = name.substring(0, name.length() - ".xml".length());
         }
         return name;
     }
 
-    private void collectCompanionOmeFiles(File dir, List<String> results) {
+    // Recursively finds acquisition files: the sole .xml (PrairieView PVScan) file in each
+    // folder, if exactly one exists there. A folder with multiple .xml files is ambiguous
+    // and is skipped (logged).
+    private void collectAcquisitionFiles(File dir, List<String> results) {
         File[] entries = dir.listFiles();
         if (entries == null) return;
-        for (File entry : entries) {
-            if (entry.isDirectory()) collectCompanionOmeFiles(entry, results);
-            else if (entry.getName().endsWith(".companion.ome")) results.add(entry.getAbsolutePath());
+
+        List<File> xmls = new ArrayList<>();
+        List<File> subdirs = new ArrayList<>();
+        for (File e : entries) {
+            if (e.isDirectory()) {
+                subdirs.add(e);
+            } else if (e.getName().toLowerCase().endsWith(".xml")) {
+                xmls.add(e);
+            }
         }
+
+        if (xmls.size() == 1) {
+            results.add(xmls.get(0).getAbsolutePath());
+        } else if (xmls.size() > 1) {
+            LogUtils.log("Skipping folder (ambiguous: " + xmls.size() +
+                    " .xml files): " + dir.getAbsolutePath());
+        }
+
+        for (File sd : subdirs) collectAcquisitionFiles(sd, results);
     }
 }
