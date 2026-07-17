@@ -2,6 +2,7 @@ package provenzano_lab.utils;
 
 import ij.ImagePlus;
 import ij.io.FileSaver;
+import loci.common.DebugTools;
 import loci.common.services.ServiceFactory;
 import loci.formats.ImageReader;
 import loci.formats.meta.IMetadata;
@@ -14,6 +15,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class BioFormatsUtils {
+
+    // Bio-Formats' readers log per-plane/per-IFD status internally at INFO level (SLF4J), which
+    // floods the console with repeating "Reading IFDs / Populating metadata / Checking comment
+    // style / Populating OME metadata" for every file it touches — not intentional plugin
+    // logging. Silenced once here (first class load) rather than per call, so it stays quiet for
+    // both the pre-read metadata probe and the actual pixel-reading pass. The plugin shows its
+    // own single-line status via IJ.showStatus at each call site instead.
+    static {
+        DebugTools.setRootLevel("ERROR");
+    }
 
     // setConcatenate(false) is required here — confirmed via direct testing that
     // setConcatenate(true) causes BF.openImagePlus() to re-merge PrairieReader's already

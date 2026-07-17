@@ -99,6 +99,7 @@ public class StackOrganizer implements PlugIn {
         String[] channelNames = null;
         IMetadata firstFileMeta = null;
 
+        IJ.showStatus("Assessing acquisition files...");
         try {
             firstFileMeta = BioFormatsUtils.readSourceMetadata(firstPath);
 
@@ -115,6 +116,7 @@ public class StackOrganizer implements PlugIn {
                 metaPixXY = cal[0];
                 for (ImagePlus pp : probe) if (pp != null) pp.close();
             }
+            IJ.showStatus("");
             // IMetadata from PrairieReader leaves PhysicalSizeZ / TimeIncrement null
             // (confirmed via direct testing) — read them from the XML directly instead.
             // Prairie's XML is unambiguously in microns, so no unit-forcing workaround is needed.
@@ -124,7 +126,7 @@ public class StackOrganizer implements PlugIn {
                 LogUtils.log("Warning: could not read voxel depth from Prairie XML: " + e.getMessage());
             }
             try {
-                metaInterval = PrairieXmlUtils.readFrameIntervalSec(firstPath);
+                metaInterval = PrairieXmlUtils.readFrameIntervalSec(firstPath, metaNXY);
             } catch (Exception e) {
                 LogUtils.log("Warning: could not read frame interval from Prairie XML: " + e.getMessage());
             }
@@ -324,7 +326,9 @@ public class StackOrganizer implements PlugIn {
             boolean isBatch) throws Exception {
 
         LogUtils.log("Opening: " + new File(filePath).getName());
+        IJ.showStatus("Opening: " + new File(filePath).getName() + "...");
         ImagePlus[] imps = BioFormatsUtils.openWithBioFormats(filePath);
+        IJ.showStatus("");
         if (imps == null || imps.length == 0 || imps[0] == null) {
             throw new Exception("Bio-Formats returned no images.");
         }

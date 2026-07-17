@@ -41,6 +41,17 @@ Local: /Users/cdz/PPP Lab Files/Coding Projects/ImageJ_Plugins/PPP_Stack_Organiz
 - Dependencies in pom.xml: `ome:bio-formats_plugins` (for loci.plugins.*), `ome:formats-api`, `ome:formats-gpl` — all still required (import-side only now)
 - scijava-maven-plugin uses `populate-app` goal (v3.x rename of `copy-jars`)
 - Enforcer skipped via `<enforcer.skip>true</enforcer.skip>` (appropriate for internal lab plugin)
+- **Bio-Formats readers log at SLF4J INFO level by default** ("Reading IFDs", "Populating metadata", "Checking comment style", "Populating OME metadata") — floods the console once per file touched. Silenced via `loci.common.DebugTools.setRootLevel("ERROR")`, called once in a static initializer in `BioFormatsUtils` (fires on first class load, covers both the metadata pre-read probe and the real pixel-reading pass). Confirmed as the actual source of pre-v0.2.0-bugfix console spam via a real-data test run (old-format dataset, 7204 per-plane files) before the fix, and confirmed silent after.
+
+## Frame Interval Fix (v0.2.0 bugfix pass, caught in manual GUI testing)
+- **`readFrameIntervalSec()` now takes `nXY` and returns the delta between consecutive visits to the SAME XY position, not consecutive `<Sequence>` cycles overall.** Real bug: PrairieView's `<Sequence>` cycles round-robin through positions (A, B, A, B, ...) for multi-position acquisitions, so a naive `cycle[1].time - cycle[0].time` measures the position-switch time, not the revisit interval — confirmed on both real nXY=2 sample datasets, where the prefilled interval showed ~28–29s against known-true 60s.
+- Fix: cycles grouped by `(index % nXY)`; interval = `time[group + nXY] - time[group]` for each group, using the FIRST such delta per group (not an average — consistent with the original single-position judgment call, since acquisitions can pause between cycles). Verified against both real datasets post-fix: both now return ~60.0s (59.99s / 60.06s).
+- Logs a non-blocking advisory (`LogUtils.log`, WARNING-prefixed) if different position groups' first deltas disagree by >0.5s — both real sample datasets DO trigger this warning (~1.2–1.8s jitter between groups, e.g. NEW: 59.99s vs 58.17s; OLD: 60.06s vs 58.84s), which appears to be normal per-cycle timing jitter in these acquisitions, not evidence of a problem — advisory only, does not block processing.
+
+## Calibration Unit Fix (v0.2.0 bugfix pass)
+- **`CalibrationUtils.applyCalibration()` now calls `setXUnit()`/`setYUnit()`/`setZUnit()` explicitly, not just `setUnit()`.** `ij.measure.Calibration.setUnit(String)` only sets the internal shared `unit` field (confirmed via bytecode inspection of `ij-1.54p.jar`); `getYUnit()`/`getZUnit()` fall back to that shared field only when their own `yunit`/`zunit` fields are `null`. `FileSaver` only emits explicit `yunit=`/`zunit=` tags in the TIFF's ImageJ metadata description when they differ from the X unit.
+- **Could not reproduce the reported missing-unit symptom with synthetic test data** — direct round-trip tests (`ij.io.Opener` reopening a `FileSaver`-written multi-C/Z/T hyperstack, and separately Bio-Formats' own `ImageReader`/`OMEXMLService` reading `PhysicalSizeX/Y/Z`) both correctly resolved all three axes to "micron" even with only `setUnit()` called — ImageJ's own null-fallback convention worked fine in both readers tested. The explicit `setXUnit`/`setYUnit`/`setZUnit` fix was applied anyway as a **defensive hardening measure**: it guarantees explicit unit strings are always written for any TIFF reader that doesn't replicate ImageJ's specific fallback logic, at zero behavior change for readers that do. If the missing-unit symptom persists after this fix, the actual cause is likely in whichever specific tool/viewer was used to inspect the file (not reproduced with Fiji's own `Opener` or Bio-Formats' `ImageReader` in this investigation) — worth getting the exact viewing method from whoever reported it.
+- Verified post-fix on real saved output (`AB D28-034_XY01.tif`): reopened via `ij.io.Opener`, `cal.getXUnit()`/`getYUnit()`/`getZUnit()` all report `"micron"`.
 
 ---
 
@@ -184,7 +195,7 @@ Never duplicate these.
 
 ### PrairieXmlUtils
 - `readVoxelDepthUm(String xmlPath)` — Z voxel depth from `PVStateValue key="micronsPerPixel"` / `ZAxis`
-- `readFrameIntervalSec(String xmlPath)` — frame interval from the first two `<Sequence>` `@time` deltas
+- `readFrameIntervalSec(String xmlPath, int nXY)` — per-position frame interval: first `@time` delta between same-position `<Sequence>` cycles (`i` vs. `i+nXY`), not consecutive cycles overall (v0.2.0 bugfix — see Frame Interval Fix section above)
 - For the two fields `IMetadata` returns `null` for
 
 ### CalibrationUtils
