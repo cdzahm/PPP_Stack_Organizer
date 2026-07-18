@@ -99,6 +99,7 @@ public class StackOrganizer implements PlugIn {
         String[] channelNames = null;
         IMetadata firstFileMeta = null;
 
+        LogUtils.log("Assessing metadata — this may take a few minutes for large acquisitions...");
         IJ.showStatus("Assessing acquisition files...");
         try {
             firstFileMeta = BioFormatsUtils.readSourceMetadata(firstPath);

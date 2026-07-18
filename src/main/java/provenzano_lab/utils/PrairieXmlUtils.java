@@ -48,6 +48,14 @@ public class PrairieXmlUtils {
     // acquisitions can pause between cycles (stage settling, user-triggered resume, etc.), which
     // would skew an average; the first interval within a position's group reflects the
     // acquisition's configured cycle period most reliably. Revisit if real data shows otherwise.
+    //
+    // The result is rounded to the nearest whole second: frame interval is a round setpoint the
+    // operator chose (e.g. 60s), and measured Sequence/@time deltas always land slightly off
+    // (59.99, 60.06 confirmed on real datasets) — that's timestamp jitter, not an intentional
+    // fractional-second interval. A per-position-group disagreement check was tried and removed:
+    // it fired on every real dataset tested (~1.2-1.8s jitter between groups), so it was noise,
+    // not signal. This field remains user-editable in the dialog, so a genuinely fractional or
+    // irregular interval can still be entered by hand.
     public static double readFrameIntervalSec(String xmlPath, int nXY) throws Exception {
         if (nXY < 1) nXY = 1;
         Document doc = parse(xmlPath);
@@ -64,7 +72,6 @@ public class PrairieXmlUtils {
 
         // First delta within each (index % nXY) group — i.e. cycle i vs. cycle i+nXY.
         List<Double> groupFirstDeltas = new ArrayList<>();
-        boolean inconsistent = false;
         for (int group = 0; group < nXY; group++) {
             if (group + nXY >= times.length) continue;
             double delta = times[group + nXY] - times[group];
@@ -74,16 +81,7 @@ public class PrairieXmlUtils {
         if (groupFirstDeltas.isEmpty()) {
             throw new Exception("Could not compute a same-position Sequence/@time delta in " + xmlPath);
         }
-        double result = groupFirstDeltas.get(0);
-        for (double d : groupFirstDeltas) {
-            if (Math.abs(d - result) > 0.5) inconsistent = true;
-        }
-        if (inconsistent) {
-            LogUtils.log("WARNING: Per-position frame interval groups disagree in " + xmlPath +
-                    " (values: " + groupFirstDeltas + ") — using first group's value: " + result + "s. " +
-                    "This may indicate irregular acquisition timing.");
-        }
-        return result;
+        return Math.round(groupFirstDeltas.get(0));
     }
 
     // Format observed in PVScan XML: "16:29:15.3001025" (HH:mm:ss.ffffff, no date).
